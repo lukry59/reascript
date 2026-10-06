@@ -20,4 +20,34 @@ T["mix_to_mono with 6 channels"] = function()
   H.near(m[1], 1, 1e-12); H.near(m[2], 0, 1e-12)
 end
 
+T["item_reader: deleted take reads silence and reports it"] = function()
+  local valid, destroyed, created = true, 0, 0
+  local prev = _G.reaper
+  _G.reaper = {
+    ValidatePtr2 = function() return valid end,
+    CreateTakeAudioAccessor = function() created = created + 1; return {} end,
+    GetAudioAccessorStartTime = function() return 0 end,
+    DestroyAudioAccessor = function() destroyed = destroyed + 1 end,
+    new_array = function(n)
+      local a = {}
+      return { clear = function() for i = 1, n do a[i] = 0.5 end end, table = function() return a end }
+    end,
+    GetAudioAccessorSamples = function() return 1 end,
+  }
+  local invalid = 0
+  local ok, err = pcall(function()
+    local read = audio.item_reader("take", 48000, 1, function() invalid = invalid + 1 end)
+    H.eq(read(0, 4)[1], 0.5, "valid read")
+    valid = false
+    local z = read(0, 4)
+    H.eq(#z, 4); H.eq(z[1], 0); H.eq(z[4], 0)
+    H.eq(destroyed, 1, "accessor closed")
+    H.eq(invalid, 1, "on_invalid called")
+    read(0, 2)
+    H.eq(created, 1, "no accessor on an invalid take")
+  end)
+  _G.reaper = prev
+  if not ok then error(err, 0) end
+end
+
 return T

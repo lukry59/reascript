@@ -26,32 +26,29 @@ local function dimmed(native)
 end
 
 local function snapshot(item)
-  local o = {
+  return {
     fadein = reaper.GetMediaItemInfo_Value(item, "D_FADEINLEN"),
     fadeout = reaper.GetMediaItemInfo_Value(item, "D_FADEOUTLEN"),
     color = math.floor(reaper.GetMediaItemInfo_Value(item, "I_CUSTOMCOLOR")),
-    takes = {},
   }
-  for t = 0, reaper.CountTakes(item) - 1 do
-    local take = reaper.GetTake(item, t)
-    if take then
-      o.takes[t] = { reaper.GetMediaItemTakeInfo_Value(take, "D_STARTOFFS"),
-                     reaper.GetMediaItemTakeInfo_Value(take, "D_PLAYRATE") }
-    end
-  end
-  return o
 end
 
 -- Rewrite geometry so the result does not depend on "auto-crossfade on split".
-local function set_geometry(o, p, it, orig)
-  reaper.SetMediaItemInfo_Value(o, "D_POSITION", it.pos + p.s)
-  reaper.SetMediaItemInfo_Value(o, "D_LENGTH", p.e - p.s)
+-- The take offset is corrected relative to what the split produced (only when the
+-- piece was shifted), so stretch markers keep the source mapping REAPER computed.
+local function set_geometry(o, p, it)
+  local target = it.pos + p.s
+  local shift = target - reaper.GetMediaItemInfo_Value(o, "D_POSITION")
   for t = 0, reaper.CountTakes(o) - 1 do
-    local take, g = reaper.GetTake(o, t), orig.takes[t]
-    if take and g then
-      reaper.SetMediaItemTakeInfo_Value(take, "D_STARTOFFS", cuts.item_to_src(p.s, g[1], g[2]))
+    local take = reaper.GetTake(o, t)
+    if take and shift ~= 0 then
+      local offs = reaper.GetMediaItemTakeInfo_Value(take, "D_STARTOFFS")
+      local rate = reaper.GetMediaItemTakeInfo_Value(take, "D_PLAYRATE")
+      reaper.SetMediaItemTakeInfo_Value(take, "D_STARTOFFS", offs + shift * rate)
     end
   end
+  reaper.SetMediaItemInfo_Value(o, "D_POSITION", target)
+  reaper.SetMediaItemInfo_Value(o, "D_LENGTH", p.e - p.s)
 end
 
 local function apply_item(it, mode)
@@ -67,7 +64,7 @@ local function apply_item(it, mode)
   for k = 1, n do
     local o, p = objs[k], pieces[k]
     if o then
-      set_geometry(o, p, it, orig)
+      set_geometry(o, p, it)
       reaper.SetMediaItemInfo_Value(o, "D_FADEINLEN", k == 1 and orig.fadein or (p.keep and p.fade_in or 0))
       reaper.SetMediaItemInfo_Value(o, "D_FADEOUTLEN", k == n and orig.fadeout or (p.keep and p.fade_out or 0))
       reaper.SetMediaItemInfo_Value(o, "D_FADEINLEN_AUTO", 0)
@@ -87,32 +84,45 @@ local function apply_item(it, mode)
   end
 end
 
-function M.apply(state, mode)
-  local res = { tracks = 0, items = 0, regions = 0, stale = 0 }
+-- Runs `body` inside one undo block. Ripple (when asked), UI refresh and the undo block
+-- are always restored, then any error is re-raised for the caller.
+local function edit(ripple, body)
   reaper.Undo_BeginBlock()
   reaper.PreventUIRefresh(1)
-  local restore = (mode == "delete") and M.disable_ripple() or function() end
-  for _, tr in ipairs(state.tracks) do
-    if tr.role == "tom" then
-      res.tracks = res.tracks + 1
-      for _, it in ipairs(tr.items) do
-        if reaper.ValidatePtr2(0, it.item, "MediaItem*") and audio.fingerprint(it.item) == it.fingerprint then
-          apply_item(it, mode)
-          res.items = res.items + 1
-          res.regions = res.regions + #(it.regions or {})
-        else
-          it.stale = true
-          res.stale = res.stale + 1
+  local restore = function() end
+  local ok, res, undo = xpcall(function()
+    if ripple then restore = M.disable_ripple() end
+    return body()
+  end, debug.traceback)
+  pcall(restore)
+  reaper.PreventUIRefresh(-1)
+  reaper.UpdateArrange()
+  reaper.Undo_EndBlock(ok and undo or (TITLE .. " : erreur"), -1)
+  if not ok then error(res, 0) end
+  return res
+end
+
+function M.apply(state, mode)
+  return edit(mode == "delete", function()
+    local res = { tracks = 0, items = 0, regions = 0, stale = 0 }
+    for _, tr in ipairs(state.tracks) do
+      if tr.role == "tom" then
+        res.tracks = res.tracks + 1
+        for _, it in ipairs(tr.items) do
+          if reaper.ValidatePtr2(0, it.item, "MediaItem*") and audio.fingerprint(it.item) == it.fingerprint then
+            apply_item(it, mode)
+            res.items = res.items + 1
+            res.regions = res.regions + #(it.regions or {})
+          else
+            it.stale = true
+            res.stale = res.stale + 1
+          end
         end
       end
     end
-  end
-  restore()
-  reaper.PreventUIRefresh(-1)
-  reaper.UpdateArrange()
-  reaper.Undo_EndBlock(("GD Tom auto-cut : %s (%d pistes, %d régions)"):format(
-    mode == "delete" and "Delete" or "Mute", res.tracks, res.regions), -1)
-  return res
+    return res, ("GD Tom auto-cut : %s (%d pistes, %d régions)"):format(
+      mode == "delete" and "Delete" or "Mute", res.tracks, res.regions)
+  end)
 end
 
 local function each_track(tracks)
@@ -138,15 +148,24 @@ end
 function M.clean(tracks)
   local list = M.find_muted(tracks)
   if #list == 0 then return 0 end
-  reaper.Undo_BeginBlock()
-  reaper.PreventUIRefresh(1)
-  local restore = M.disable_ripple()
-  for _, e in ipairs(list) do reaper.DeleteTrackMediaItem(e.track, e.item) end
-  restore()
-  reaper.PreventUIRefresh(-1)
-  reaper.UpdateArrange()
-  reaper.Undo_EndBlock(("GD Tom auto-cut : Clean (%d items)"):format(#list), -1)
-  return #list
+  return edit(true, function()
+    local touched, order = {}, {}
+    for _, e in ipairs(list) do
+      reaper.DeleteTrackMediaItem(e.track, e.item)
+      if not touched[e.track] then touched[e.track], order[#order + 1] = true, e.track end
+    end
+    -- The track is no longer "processed": drop the kept tags on what remains.
+    for _, track in ipairs(order) do
+      for i = 0, reaper.CountTrackMediaItems(track) - 1 do
+        local item = reaper.GetTrackMediaItem(track, i)
+        if project.get_tag(item) == "kept" then
+          project.set_tag(item, "")
+          reaper.GetSetMediaItemInfo_String(item, project.TAG_COLOR, "", true)
+        end
+      end
+    end
+    return #list, ("GD Tom auto-cut : Clean (%d items)"):format(#list)
+  end)
 end
 
 function M.clean_interactive(tracks)
@@ -167,40 +186,37 @@ function M.clean_interactive(tracks)
 end
 
 function M.reset(tracks)
-  reaper.Undo_BeginBlock()
-  reaper.PreventUIRefresh(1)
-  local saved = {}
-  for i = 0, reaper.CountSelectedMediaItems(0) - 1 do saved[#saved + 1] = reaper.GetSelectedMediaItem(0, i) end
-  reaper.Main_OnCommand(UNSELECT_ALL_ITEMS, 0)
-  local n = 0
-  for _, track in ipairs(tracks) do
-    for i = 0, reaper.CountTrackMediaItems(track) - 1 do
-      local item = reaper.GetTrackMediaItem(track, i)
-      if project.get_tag(item) ~= "" then
-        reaper.SetMediaItemInfo_Value(item, "B_MUTE", 0)
-        local _, c = reaper.GetSetMediaItemInfo_String(item, project.TAG_COLOR, "", false)
-        if tonumber(c) then reaper.SetMediaItemInfo_Value(item, "I_CUSTOMCOLOR", tonumber(c)) end
-        reaper.SetMediaItemSelected(item, true)
-        n = n + 1
+  return edit(false, function()
+    local saved = {}
+    for i = 0, reaper.CountSelectedMediaItems(0) - 1 do saved[#saved + 1] = reaper.GetSelectedMediaItem(0, i) end
+    reaper.Main_OnCommand(UNSELECT_ALL_ITEMS, 0)
+    local n = 0
+    for _, track in ipairs(tracks) do
+      for i = 0, reaper.CountTrackMediaItems(track) - 1 do
+        local item = reaper.GetTrackMediaItem(track, i)
+        if project.get_tag(item) ~= "" then
+          reaper.SetMediaItemInfo_Value(item, "B_MUTE", 0)
+          local _, c = reaper.GetSetMediaItemInfo_String(item, project.TAG_COLOR, "", false)
+          if tonumber(c) then reaper.SetMediaItemInfo_Value(item, "I_CUSTOMCOLOR", tonumber(c)) end
+          reaper.SetMediaItemSelected(item, true)
+          n = n + 1
+        end
       end
     end
-  end
-  reaper.Main_OnCommand(HEAL_SPLITS, 0)
-  for _, track in ipairs(tracks) do
-    for i = 0, reaper.CountTrackMediaItems(track) - 1 do
-      local item = reaper.GetTrackMediaItem(track, i)
-      project.set_tag(item, "")
-      reaper.GetSetMediaItemInfo_String(item, project.TAG_COLOR, "", true)
+    reaper.Main_OnCommand(HEAL_SPLITS, 0)
+    for _, track in ipairs(tracks) do
+      for i = 0, reaper.CountTrackMediaItems(track) - 1 do
+        local item = reaper.GetTrackMediaItem(track, i)
+        project.set_tag(item, "")
+        reaper.GetSetMediaItemInfo_String(item, project.TAG_COLOR, "", true)
+      end
     end
-  end
-  reaper.Main_OnCommand(UNSELECT_ALL_ITEMS, 0)
-  for _, item in ipairs(saved) do
-    if reaper.ValidatePtr2(0, item, "MediaItem*") then reaper.SetMediaItemSelected(item, true) end
-  end
-  reaper.PreventUIRefresh(-1)
-  reaper.UpdateArrange()
-  reaper.Undo_EndBlock(("GD Tom auto-cut : Reset (%d items)"):format(n), -1)
-  return n
+    reaper.Main_OnCommand(UNSELECT_ALL_ITEMS, 0)
+    for _, item in ipairs(saved) do
+      if reaper.ValidatePtr2(0, item, "MediaItem*") then reaper.SetMediaItemSelected(item, true) end
+    end
+    return n, ("GD Tom auto-cut : Reset (%d items)"):format(n)
+  end)
 end
 
 return M

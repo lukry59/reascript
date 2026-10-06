@@ -13,10 +13,29 @@ function M.mix_to_mono(t, n, nch)
   return out
 end
 
-function M.item_reader(take, sr, nch)
+local function zeros(n)
+  local t = {}
+  for i = 1, n do t[i] = 0 end
+  return t
+end
+
+-- `on_invalid` is called when the take no longer exists (deleted while a job runs);
+-- reads then return silence instead of touching a dead accessor.
+function M.item_reader(take, sr, nch, on_invalid)
   local acc, buf, cap, t_start = nil, nil, 0, 0
+  local function close()
+    if acc then
+      reaper.DestroyAudioAccessor(acc)
+      acc = nil
+    end
+  end
   local function read(t0, n)
     if n <= 0 then return {} end
+    if not reaper.ValidatePtr2(0, take, "MediaItem_Take*") then
+      close()
+      if on_invalid then on_invalid() end
+      return zeros(n)
+    end
     if not acc then
       acc = reaper.CreateTakeAudioAccessor(take)
       t_start = reaper.GetAudioAccessorStartTime(acc)
@@ -29,12 +48,6 @@ function M.item_reader(take, sr, nch)
     buf.clear()
     reaper.GetAudioAccessorSamples(acc, sr, nch, t_start + t0, n, buf)
     return M.mix_to_mono(buf.table(1, need), n, nch)
-  end
-  local function close()
-    if acc then
-      reaper.DestroyAudioAccessor(acc)
-      acc = nil
-    end
   end
   return read, close
 end
@@ -76,7 +89,7 @@ function M.item_info(item)
     startoffs = offs, playrate = rate, sr = sr, nch = nch,
     fingerprint = M.fingerprint(item),
   }
-  info.reader, info.close = M.item_reader(take, sr, nch)
+  info.reader, info.close = M.item_reader(take, sr, nch, function() info.stale = true end)
   return info
 end
 
