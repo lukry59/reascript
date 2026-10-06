@@ -45,7 +45,14 @@ reascript/
 │   └── tom_autocut/
 │       ├── audio.lua        lecture audio accessor par blocs, somme mono
 │       ├── envelope.lua     suiveurs Peak rapide/lent, fonction d'onset, détection candidats
-│       ├── fft.lua          FFT radix-2 Lua pur, fenêtre de Hann, Goertzel
+│       ├── fft.lua          FFT radix-2 Lua pur, fenêtre de Hann
+│       ├── bandtrack.lua    passe-bande (2 biquads) sur la bande du fût + enveloppe 10 ms
+│       ├── cuts.lua         découpage pur d'un item en morceaux gardés/hors région
+│       ├── settings.lua     valeurs par défaut, presets, (dé)sérialisation, noms de pistes
+│       ├── pipeline.lua     étage léger : scores → attribution → decay → régions
+│       ├── analysis.lua     étage lourd : passes A (onsets+features) et B (bande)
+│       ├── project.lua      pistes du projet, persistance, tags
+│       ├── preview.lua      take markers GD·
 │       ├── features.lua     features spectrales, apprentissage bande fût et decay
 │       ├── attribution.lua  regroupement inter-pistes, attribution coup/repisse
 │       ├── regions.lua      régions : pré-roll, decay auto, roulements, merge gap
@@ -114,7 +121,7 @@ bande fût apprise (ex. « 92 Hz (70–180) », éditable) · decay appris (ex. 
 | | Fade in / fade out | 2 ms / 30 ms (fade out calé sur la queue en mode Auto) |
 | Attribution | Fenêtre inter-pistes | ±3 ms |
 | | Marge de dominance | 6 dB |
-| Avancé | Taille FFT | 2048 |
+| Avancé | Taille FFT (base 48 kHz, mise à l'échelle avec le sample rate) | 2048 |
 | | Fenêtre d'analyse spectrale | 0–50 ms après l'onset |
 | | Pondération des indices d'attribution | énergie 0,6 · arrivée 0,25 · netteté 0,15 |
 
@@ -138,13 +145,16 @@ Presets nommés sauvegardables (livrés : « Studio », « Live (bleed fort) »)
 
 ### Étage 2 — Features (par candidat)
 
-- FFT 2048 points, Hann, sur 0–50 ms après l'onset.
+- FFT de `next_pow2(2048 · sr / 48000)` points (≈ 43–46 ms), Hann, depuis l'onset.
 - `E_band` (énergie dans la bande du fût), `R_low/high` (40–400 Hz / 2–10 kHz),
   `f0` (pic dominant 50–400 Hz), `sharpness` (pente d'attaque en dB/ms), `peak_dB`.
-- **Bande du fût apprise** : top 20 % des candidats par `peak_dB` ; `f0_track` = médiane de
-  leurs `f0` ; bande = `[0,75·f0_track ; 2·f0_track]`. Si moins de 5 candidats forts :
+- **Bande du fût apprise** : candidats « forts » = dominés par le grave (`e_low > e_high`) et
+  à moins de 6 dB du plus fort, limités aux `max(5, 20 %)` plus forts ; `f0_track` = médiane
+  de leurs `f0` ; bande = `[0,75·f0_track ; 2·f0_track]`. Si moins de 2 candidats forts :
   bande par défaut 60–300 Hz + avertissement. Correction manuelle possible.
-- **Coup typique** de la piste = médiane `E_band` du top 20 % (sert à normaliser).
+  (Un tom peut ne jouer que quelques coups par morceau : exiger 5 coups forts ferait
+  apprendre la bande sur la repisse.)
+- **Coup typique** de la piste = médiane `E_band` des candidats forts (sert à normaliser).
 - **Score piste seule** (0–1) : combinaison pondérée de `E_band` normalisé, `R_low/high`,
   `sharpness`, cohérence `f0`/`f0_track`. Rejet si `peak_dB` < coup typique + plancher.
 
@@ -162,13 +172,19 @@ Presets nommés sauvegardables (livrés : « Studio », « Live (bleed fort) »)
 
 ### Étage 4 — Régions et decay automatique
 
-- **Suivi du decay** : après chaque coup retenu, énergie à `f0_track` et à son premier
-  partiel suivie par **Goertzel** sur trames de 10 ms (jusqu'à la durée max).
+- **Suivi du decay** : passe B sur tout l'item, filtre passe-bande (2 biquads RBJ en cascade)
+  centré sur la bande du fût, enveloppe crête par trames de 10 ms (en dB). Remplace le
+  Goertzel initialement prévu : une fenêtre de 10 ms est plus courte qu'une période à 80 Hz,
+  le Goertzel n'y a aucune résolution, et le filtre coûte moins cher en Lua.
 - **Modèle de decay par piste** : sur les coups isolés (aucun autre coup dans les 1,5 s),
   régression linéaire de la pente en dB/s → decay typique (éditable dans la liste).
 - **Fin de région** (mode Auto) : premier instant où l'énergie de bande passe sous
-  `pic − profondeur de decay` ; si la mesure atteint le bruit de fond/repisse avant,
-  extrapolation avec la pente du modèle. Bornée par durée min/max.
+  `max(coup_typique_bande − profondeur, bruit + 3 dB)` (niveau **absolu** par piste, d'où
+  coup fort → région plus longue) ; si l'énergie remonte de plus de 3 dB (autre source,
+  coup suivant) avant, extrapolation depuis le point le plus bas avec la pente du modèle.
+  Bornée par durée min/max.
+- Decay corrigé à la main : la fin devient `onset + (pic_du_coup − cible) / pente`, avec
+  `pente = −profondeur / decay_corrigé` (le réglage manuel est alors déterminant).
 - Mode Fixe : fin = onset + durée fixe.
 - Début de région = `onset − pré-roll`.
 - **Roulements** : un coup retenu qui arrive avant la fin calculée de la région ouverte la
@@ -179,11 +195,14 @@ Presets nommés sauvegardables (livrés : « Studio », « Live (bleed fort) »)
 ## 6. Application
 
 - Conversion en temps projet, `SplitMediaItem` à chaque borne.
-- Morceaux gardés : fade in = pré-roll, fade out sur la fin de queue (pente mesurée en Auto) ;
+- Morceaux gardés : fade in = réglage Fade in (dans le pré-roll), fade out sur la fin de queue
+  (Auto : `clamp(0,3 · queue, Fade out, 0,5 s)`, jamais avant le dernier onset) ;
   fades existants aux extrémités de l'item d'origine conservés.
 - Morceaux hors région :
   - Mute : `B_MUTE = 1`, `P_EXT:GD_TOMCUT = muted`, couleur assombrie.
   - Delete : suppression ; ripple editing désactivé pendant l'opération puis restauré.
+- Position, longueur et offset de chaque morceau sont réécrits après le split (insensible à
+  l'option « auto-crossfade on split » de REAPER).
 - `PreventUIRefresh` + un bloc d'Undo par application
   (« GD Tom auto-cut : Mute (3 pistes, 128 régions) »).
 - **Clean muted** : supprime les items muets **et** tagués, sur les pistes cochées ou tout le
@@ -211,7 +230,7 @@ Presets nommés sauvegardables (livrés : « Studio », « Live (bleed fort) »)
    - roulement en doubles croches à 180 BPM → une seule région ;
    - deux pistes, repisse retardée de 2 ms et atténuée de 12 dB → attribution correcte ;
    - flam simultané sur deux toms → coup gardé sur les deux ;
-   - FFT et Goertzel comparés à des valeurs de référence.
+   - FFT comparée à des valeurs de référence, filtre passe-bande (gain au centre, réjection).
 2. **ReaPack** : `reapack-index --check` avant chaque release.
 3. **Manuel dans REAPER** : item continu, items déjà découpés, Mute → Clean, Delete avec
    ripple actif, Reset, Undo.
