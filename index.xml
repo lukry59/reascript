@@ -5,25 +5,25 @@
       <metadata>
         <description><![CDATA[Analyse les pistes de toms et découpe les items (Mute, Delete, Clean, Reset). Nécessite ReaImGui.]]></description>
       </metadata>
-      <version name="1.0.0" author="Guillaume Delachat" time="2026-10-06T00:00:00Z">
+      <version name="1.0.0" author="Guillaume Delachat" time="2026-10-06T22:15:51Z">
         <changelog><![CDATA[Première version]]></changelog>
-        <source main="main">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/GD_Tom%20auto-cut.lua</source>
-        <source main="main" file="GD_Tom auto-cut - Clean muted.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/GD_Tom%20auto-cut%20-%20Clean%20muted.lua</source>
-        <source file="tom_autocut/analysis.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/analysis.lua</source>
-        <source file="tom_autocut/apply.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/apply.lua</source>
-        <source file="tom_autocut/attribution.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/attribution.lua</source>
-        <source file="tom_autocut/audio.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/audio.lua</source>
-        <source file="tom_autocut/bandtrack.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/bandtrack.lua</source>
-        <source file="tom_autocut/cuts.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/cuts.lua</source>
-        <source file="tom_autocut/envelope.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/envelope.lua</source>
-        <source file="tom_autocut/features.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/features.lua</source>
-        <source file="tom_autocut/fft.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/fft.lua</source>
-        <source file="tom_autocut/pipeline.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/pipeline.lua</source>
-        <source file="tom_autocut/preview.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/preview.lua</source>
-        <source file="tom_autocut/project.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/project.lua</source>
-        <source file="tom_autocut/regions.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/regions.lua</source>
-        <source file="tom_autocut/settings.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/settings.lua</source>
-        <source file="tom_autocut/ui.lua">https://github.com/lukry59/reascript/raw/4bc43f892cf95c47cc06d43bfa07f395d84787af/Drums/tom_autocut/ui.lua</source>
+        <source main="main">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/GD_Tom%20auto-cut.lua</source>
+        <source main="main" file="GD_Tom auto-cut - Clean muted.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/GD_Tom%20auto-cut%20-%20Clean%20muted.lua</source>
+        <source file="tom_autocut/analysis.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/analysis.lua</source>
+        <source file="tom_autocut/apply.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/apply.lua</source>
+        <source file="tom_autocut/attribution.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/attribution.lua</source>
+        <source file="tom_autocut/audio.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/audio.lua</source>
+        <source file="tom_autocut/bandtrack.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/bandtrack.lua</source>
+        <source file="tom_autocut/cuts.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/cuts.lua</source>
+        <source file="tom_autocut/envelope.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/envelope.lua</source>
+        <source file="tom_autocut/features.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/features.lua</source>
+        <source file="tom_autocut/fft.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/fft.lua</source>
+        <source file="tom_autocut/pipeline.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/pipeline.lua</source>
+        <source file="tom_autocut/preview.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/preview.lua</source>
+        <source file="tom_autocut/project.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/project.lua</source>
+        <source file="tom_autocut/regions.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/regions.lua</source>
+        <source file="tom_autocut/settings.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/settings.lua</source>
+        <source file="tom_autocut/ui.lua">https://github.com/lukry59/reascript/raw/0d3383ffc6bc2bae2cd941f8b0756eab52c8ef3a/Drums/tom_autocut/ui.lua</source>
       </version>
     </reapack>
   </category>
