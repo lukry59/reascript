@@ -20,3 +20,16 @@ Projet de test : 3 pistes de toms réelles (Tom 1, Tom 2, Floor), une caisse cla
 - [ ] Bande corrigée à la main (ex. 70-180) : réanalyse de bande automatique, valeur conservée à la réouverture.
 - [ ] Caisse claire en Référence (live) : la repisse de caisse claire est marquée « bleed ← Snare ».
 - [ ] Fermer la fenêtre : plus aucun take marker `GD·` dans le projet.
+- [ ] Ctrl+Z après Appliquer : Mute, puis après Appliquer : Delete : le projet revient exactement à
+      l'état d'avant (items, positions, fades, couleurs).
+- [ ] Item avec stretch markers : coupes alignées sur les attaques, audio inchangé dans les régions.
+- [ ] Item avec FX de take : analyse et coupes correctes (audio lu avant/après FX cohérent avec l'écoute).
+- [ ] Item polyWAV / mode de canal de take (mono G, mono D, etc.) : analyse sur les canaux joués.
+- [ ] Items 44,1 kHz, 96 kHz et stéréo : mêmes coups détectés, coupes alignées.
+- [ ] Supprimer un item pendant Analyser, puis pendant une réanalyse de bande : pas d'erreur Lua,
+      l'item est signalé « à réanalyser » ou ignoré à l'application.
+- [ ] Fermer la fenêtre pendant l'analyse : pas d'erreur, plus aucun take marker `GD·`.
+- [ ] Décocher une piste (ou la passer en Ignorer / Référence) après Analyser : message
+      « Sélection modifiée : relancez Analyser. », Appliquer désactivé, rien n'est coupé sur cette piste.
+- [ ] Installation ReaPack depuis l'index sur un profil REAPER vierge : les deux actions apparaissent
+      et se lancent.
