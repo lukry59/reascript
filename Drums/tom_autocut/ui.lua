@@ -6,6 +6,7 @@ local analysis = require("tom_autocut.analysis")
 local pipeline = require("tom_autocut.pipeline")
 local preview = require("tom_autocut.preview")
 local apply = require("tom_autocut.apply")
+local features = require("tom_autocut.features")
 
 local M = {}
 local TITLE = "GD Tom auto-cut"
@@ -99,6 +100,18 @@ function M.run(ImGui)
     S.job, S.message = nil, "Analyse annulée."
   end
 
+  -- Ticking/unticking or changing the role of an analysed track invalidates the analysis.
+  local function selection_changed(guid)
+    if not (S.state and S.state.by_key and S.state.by_key[guid]) then return end
+    if S.job then
+      project.close_sources(S.job_tracks)
+      S.job = nil
+    end
+    S.state = nil
+    preview.clear_all()
+    S.message = "Sélection modifiée : relancez Analyser."
+  end
+
   local function pending_band_track()
     if not S.state then return nil end
     for _, tr in ipairs(S.state.tracks or {}) do
@@ -120,8 +133,10 @@ function M.run(ImGui)
         project.close_sources(S.job_tracks)
         S.job = nil
         S.state = a
-        pipeline.recompute(S.state, S.settings)
-        S.preview_dirty, S.last_edit = true, 0
+        if S.state then
+          pipeline.recompute(S.state, S.settings)
+          S.preview_dirty, S.last_edit = true, 0
+        end
       else
         S.progress, S.label = a or S.progress, b or S.label
       end
@@ -130,6 +145,16 @@ function M.run(ImGui)
 
   local function commit_overrides(r, e)
     local band = settings_mod.parse_band(e.band)
+    if band and band[2] > features.KEEP_HZ then
+      if band[1] >= features.KEEP_HZ then
+        band = nil
+        S.message = ("Bande au-dessus de %d Hz ignorée."):format(features.KEEP_HZ)
+      else
+        band[2] = features.KEEP_HZ
+        e.band = ("%g-%g"):format(band[1], band[2])
+        S.message = ("Bande limitée à %d Hz."):format(features.KEEP_HZ)
+      end
+    end
     local decay = tonumber((e.decay:gsub(",", ".")))
     if decay and decay <= 0 then decay = nil end
     project.set_overrides(r.track, band, decay)
@@ -208,7 +233,11 @@ function M.run(ImGui)
 
         ImGui.TableNextColumn(ctx)
         local ch, v = ImGui.Checkbox(ctx, "##chk", sel.checked)
-        if ch then sel.checked = v; project.save_selection(S.sel) end
+        if ch then
+          sel.checked = v
+          project.save_selection(S.sel)
+          selection_changed(r.guid)
+        end
 
         ImGui.TableNextColumn(ctx)
         if r.level > 0 then ImGui.Dummy(ctx, r.level * 14, 1); ImGui.SameLine(ctx) end
@@ -227,7 +256,11 @@ function M.run(ImGui)
         ImGui.TableNextColumn(ctx)
         ImGui.SetNextItemWidth(ctx, -1)
         local rc, ri = ImGui.Combo(ctx, "##role", ROLE_INDEX[sel.role] or 0, "Tom\0Référence\0Ignorer\0")
-        if rc then sel.role = ROLES[ri]; project.save_selection(S.sel) end
+        if rc then
+          sel.role = ROLES[ri]
+          project.save_selection(S.sel)
+          selection_changed(r.guid)
+        end
 
         ImGui.TableNextColumn(ctx)
         local hint = "auto"
@@ -329,7 +362,17 @@ function M.run(ImGui)
 
   local function do_apply(mode)
     preview.clear_all()
-    local res = apply.apply(S.state, mode)
+    local tracks = {}
+    for _, tr in ipairs(S.state.tracks) do
+      local sel = S.sel[tr.key]
+      if sel and sel.checked and sel.role == "tom" then tracks[#tracks + 1] = tr end
+    end
+    local ok, res = pcall(apply.apply, { tracks = tracks }, mode)
+    if not ok then
+      S.state = nil
+      S.message = "Erreur pendant l'application : " .. tostring(res)
+      return
+    end
     S.message = ("%s appliqué : %d régions sur %d items."):format(mode == "delete" and "Delete" or "Mute", res.regions, res.items)
     if res.stale > 0 then
       S.message = S.message .. (" %d items modifiés depuis l'analyse n'ont pas été traités (à réanalyser)."):format(res.stale)
@@ -368,8 +411,12 @@ function M.run(ImGui)
     ImGui.SameLine(ctx)
     ImGui.BeginDisabled(ctx, S.job ~= nil)
     if ImGui.Button(ctx, "Clean muted") then
-      local n = apply.clean_interactive(checked_tom_tracks())
-      if n > 0 then S.message = ("%d items muets supprimés."):format(n) end
+      local ok, n = pcall(apply.clean_interactive, checked_tom_tracks())
+      if not ok then
+        S.message = "Erreur pendant Clean muted : " .. tostring(n)
+      elseif n > 0 then
+        S.message = ("%d items muets supprimés."):format(n)
+      end
     end
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Reset") then
@@ -377,7 +424,8 @@ function M.run(ImGui)
       if #tracks > 0 and reaper.MB(("Rétablir %d piste(s) cochée(s) dans leur état d'avant traitement ?"):format(#tracks), TITLE, 1) == 1 then
         preview.clear_all()
         S.state = nil
-        S.message = ("Reset : %d items rétablis."):format(apply.reset(tracks))
+        local ok, n = pcall(apply.reset, tracks)
+        S.message = ok and ("Reset : %d items rétablis."):format(n) or ("Erreur pendant Reset : " .. tostring(n))
       end
     end
     ImGui.EndDisabled(ctx)
