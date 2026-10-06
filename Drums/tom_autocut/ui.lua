@@ -21,7 +21,7 @@ function M.run(ImGui)
     rows = {}, change_count = -1, filter = "", collapsed = {},
     state = nil, job = nil, job_kind = nil, job_tracks = nil, progress = 0, label = "",
     preview_dirty = false, last_edit = 0, message = "",
-    preset_label = nil, preset_name = "", edits = {}, closed = false,
+    preset_label = nil, preset_name = "", edits = {}, closed = false, band_cancelled = false,
   }
   preview.clear_all()
 
@@ -95,7 +95,16 @@ function M.run(ImGui)
   local function cancel_job()
     project.close_sources(S.job_tracks)
     if S.job_kind == "full" then S.state = nil end
+    if S.job_kind == "band" then S.band_cancelled = true end
     S.job, S.message = nil, "Analyse annulée."
+  end
+
+  local function pending_band_track()
+    if not S.state then return nil end
+    for _, tr in ipairs(S.state.tracks or {}) do
+      if tr.needs_band_pass then return tr end
+    end
+    return nil
   end
 
   local function step_job()
@@ -104,7 +113,8 @@ function M.run(ImGui)
       local ok, a, b = coroutine.resume(S.job)
       if not ok then
         project.close_sources(S.job_tracks)
-        S.job, S.state = nil, nil
+        if S.job_kind == "full" then S.state = nil else S.band_cancelled = true end
+        S.job = nil
         S.message = "Erreur pendant l'analyse : " .. tostring(a)
       elseif coroutine.status(S.job) == "dead" then
         project.close_sources(S.job_tracks)
@@ -127,6 +137,7 @@ function M.run(ImGui)
     if tr then
       tr.band_override, tr.decay_override_s = band, decay
       mark_changed()
+      S.band_cancelled = false
       if tr.needs_band_pass and not S.job then start_band_job(tr) end
     end
   end
@@ -347,7 +358,7 @@ function M.run(ImGui)
       ImGui.EndTabBar(ctx)
     end
     ImGui.Separator(ctx)
-    ImGui.BeginDisabled(ctx, S.state == nil or S.job ~= nil)
+    ImGui.BeginDisabled(ctx, S.state == nil or S.job ~= nil or pending_band_track() ~= nil)
     if ImGui.Button(ctx, "Appliquer : Mute") then do_apply("mute") end
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Appliquer : Delete") then do_apply("delete") end
@@ -385,6 +396,10 @@ function M.run(ImGui)
   local function loop()
     refresh_rows()
     if S.job then step_job() end
+    if not S.job and S.state and not S.band_cancelled then
+      local tr = pending_band_track()
+      if tr then start_band_job(tr) end
+    end
     if S.preview_dirty and not S.job and now() - S.last_edit > 0.15 then
       S.preview_dirty = false
       if S.state then preview.draw(S.state, S.settings) end
