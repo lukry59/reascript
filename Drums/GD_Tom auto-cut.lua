@@ -1,7 +1,7 @@
 -- @description Tom auto-cut (transitoires + spectre, roulements, repisse inter-pistes)
 -- @author Guillaume Delachat
--- @version 1.0.0
--- @changelog Première version
+-- @version 1.0.1
+-- @changelog Correction : l'analyse lisait du silence dans la fenêtre (lecture audio depuis une coroutine).
 -- @provides
 --   [nomain] tom_autocut/*.lua
 --   [main] GD_Tom auto-cut - Clean muted.lua

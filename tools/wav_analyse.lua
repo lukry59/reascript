@@ -1,5 +1,5 @@
 -- Offline run of the GD Tom auto-cut analysis on WAV files (dev only).
--- Usage: [START=s] [DUR=s] lua5.4 tools/wav_analyse.lua <name>=<file.wav> [<name>=<file.wav> ...]
+-- Usage: [START=s] [DUR=s] [LIST=from-to] lua5.4 tools/wav_analyse.lua [ref:]<name>=<file.wav> ...
 package.path = "./Drums/?.lua;" .. package.path
 local analysis = require("tom_autocut.analysis")
 local pipeline = require("tom_autocut.pipeline")
@@ -71,7 +71,9 @@ local START, DUR = tonumber(os.getenv("START") or "0"), tonumber(os.getenv("DUR"
 local tracks = {}
 for _, a in ipairs(arg) do
   local name, path = a:match("^([^=]+)=(.+)$")
-  assert(name, "argument must be name=path: " .. a)
+  assert(name, "argument must be [ref:]name=path: " .. a)
+  local role = "tom"
+  if name:sub(1, 4) == "ref:" then role, name = "ref", name:sub(5) end
   local t0 = os.clock()
   local buf, sr, nch, bits, tag, file_s = read_wav(path, START, DUR)
   local peak = 0
@@ -86,7 +88,7 @@ for _, a in ipairs(arg) do
     for i = 1, n do out[i] = buf[i0 + i] or 0 end
     return out
   end
-  tracks[#tracks + 1] = { key = name, name = name, role = "tom",
+  tracks[#tracks + 1] = { key = name, name = name, role = role,
     items = { { key = name, pos = 0, len = #buf / sr, sr = sr, startoffs = 0, playrate = 1, reader = reader } } }
 end
 
@@ -99,10 +101,16 @@ for _, tr in ipairs(state.tracks) do
   print(("\n== %s: %d cands | model ok=%s usable=%s f0=%.0f band=%.0f-%.0f strong=%d | hits=%d bleeds=%d rejected=%d regions=%d kept=%.0f%% decay=%.2fs"):format(
     tr.name, #tr.cands, tostring(m.ok), tostring(m.usable), m.f0, m.band_lo, m.band_hi, m.n_strong,
     s.hits, s.bleeds, s.rejected, s.regions, s.total > 0 and 100 * s.kept / s.total or 0, tr.decay_s or 0))
+  local lf, lt = (os.getenv("LIST") or ""):match("([%d%.]+)%-([%d%.]+)")
+  lf, lt = tonumber(lf), tonumber(lt)
+  local shown = 0
   for k, c in ipairs(tr.cands) do
-    if k > 25 then print("  ...") break end
+    if lf and (c.time < lf or c.time > lt) then goto continue end
+    shown = shown + 1
+    if shown > 25 then print("  ...") break end
     print(("  t=%7.3f peak=%6.1f odf=%5.1f f0=%4.0f lo/hi=%6.1f score=%.2f %s%s"):format(c.time, c.peak_db, c.odf_db,
       c.feat.f0, 10 * math.log(math.max(c.feat.e_low, 1e-30) / math.max(c.feat.e_high, 1e-30), 10), c.score or -1,
       c.status or "?", c.bleed_from and (" <- " .. c.bleed_from) or ""))
+    ::continue::
   end
 end
