@@ -36,6 +36,24 @@ end
 T["power_spectrum zero-pads past the end"] = function()
   local p = fft.power_spectrum({ 1, 1 }, 1, 8)
   H.eq(#p, 5)
+  -- Verify actual values: with Hann window, w[1]=0, so only x[2]*w[2] is nonzero.
+  -- This produces a delta function spectrum with all bins having power w[2]^2.
+  local w = fft.hann(8)
+  local expected = w[2] * w[2]
+  for k = 1, #p do
+    H.near(p[k], expected, 1e-12)
+    H.truthy(p[k] == p[k] and p[k] ~= 1/0 and p[k] ~= -1/0, "bin " .. k .. " must be finite")
+  end
+
+  -- Test with first=0: sample index 0 is padding, samples[1] and [2] land at window positions 2 and 3.
+  -- DC component should be (w[2] + w[3])^2.
+  local p2 = fft.power_spectrum({ 1, 1 }, 0, 8)
+  H.eq(#p2, 5)
+  local expected_dc = (w[2] + w[3]) * (w[2] + w[3])
+  H.near(p2[1], expected_dc, 1e-12)
+  for k = 1, #p2 do
+    H.truthy(p2[k] == p2[k] and p2[k] ~= 1/0 and p2[k] ~= -1/0, "bin " .. k .. " must be finite")
+  end
 end
 
 T["next_pow2"] = function()
