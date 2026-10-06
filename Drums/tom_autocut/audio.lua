@@ -19,6 +19,21 @@ local function zeros(n)
   return t
 end
 
+-- GetAudioAccessorSamples returns nil and fills nothing when called from inside a coroutine
+-- (see tools/accessor_probe.lua). Inside a job, a read is therefore yielded as a request that
+-- M.resume runs on the main context before resuming the job with its result.
+M.READ_REQUEST = setmetatable({}, { __tostring = function() return "audio read request" end })
+
+-- Drop-in for coroutine.resume on analysis jobs: serves read requests, passes every
+-- other yield (progress) and the final return through unchanged.
+function M.resume(co, ...)
+  local res = table.pack(coroutine.resume(co, ...))
+  while res[1] and res[2] == M.READ_REQUEST and coroutine.status(co) == "suspended" do
+    res = table.pack(coroutine.resume(co, res[3]()))
+  end
+  return table.unpack(res, 1, res.n)
+end
+
 -- `on_invalid` is called when the take no longer exists (deleted while a job runs);
 -- reads then return silence instead of touching a dead accessor.
 function M.item_reader(take, sr, nch, on_invalid)
@@ -29,8 +44,7 @@ function M.item_reader(take, sr, nch, on_invalid)
       acc = nil
     end
   end
-  local function read(t0, n)
-    if n <= 0 then return {} end
+  local function read_now(t0, n)
     if not reaper.ValidatePtr2(0, take, "MediaItem_Take*") then
       close()
       if on_invalid then on_invalid() end
@@ -48,6 +62,13 @@ function M.item_reader(take, sr, nch, on_invalid)
     buf.clear()
     reaper.GetAudioAccessorSamples(acc, sr, nch, t_start + t0, n, buf)
     return M.mix_to_mono(buf.table(1, need), n, nch)
+  end
+  local function read(t0, n)
+    if n <= 0 then return {} end
+    if coroutine.isyieldable() then
+      return coroutine.yield(M.READ_REQUEST, function() return read_now(t0, n) end)
+    end
+    return read_now(t0, n)
   end
   return read, close
 end

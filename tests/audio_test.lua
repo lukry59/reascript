@@ -50,4 +50,76 @@ T["item_reader: deleted take reads silence and reports it"] = function()
   if not ok then error(err, 0) end
 end
 
+-- REAPER's GetAudioAccessorSamples returns nil and leaves the buffer untouched when it is
+-- called from inside a coroutine (measured with tools/accessor_probe.lua). The stub reproduces it.
+local function coroutine_hostile_reaper()
+  return {
+    ValidatePtr2 = function() return true end,
+    CreateTakeAudioAccessor = function() return {} end,
+    GetAudioAccessorStartTime = function() return 0 end,
+    DestroyAudioAccessor = function() end,
+    new_array = function(n)
+      local a = {}
+      return {
+        clear = function() for i = 1, n do a[i] = 0 end end,
+        table = function(offset, size)
+          if not offset then return a end
+          local out = {}
+          for i = 1, size do out[i] = a[offset + i - 1] end
+          return out
+        end,
+        raw = a,
+      }
+    end,
+    GetAudioAccessorSamples = function(_, _, _, _, n, buf)
+      if coroutine.isyieldable() then return nil end
+      local a = buf.raw
+      for i = 1, n do a[i] = 0.25 end
+      return 1
+    end,
+  }
+end
+
+T["item_reader inside a coroutine reads through audio.resume"] = function()
+  local prev = _G.reaper
+  _G.reaper = coroutine_hostile_reaper()
+  local ok, err = pcall(function()
+    local read = audio.item_reader("take", 48000, 1)
+    local co = coroutine.create(function()
+      local first = read(0, 3)
+      coroutine.yield(0.5, "progress")
+      return first, read(1, 2)
+    end)
+    local ok1, a, b = audio.resume(co)
+    H.truthy(ok1, tostring(a))
+    H.eq(a, 0.5, "progress yield passes through")
+    H.eq(b, "progress")
+    local ok2, first, second = audio.resume(co)
+    H.truthy(ok2, tostring(first))
+    H.eq(coroutine.status(co), "dead")
+    H.eq(#first, 3); H.eq(first[1], 0.25, "first read has audio")
+    H.eq(#second, 2); H.eq(second[2], 0.25, "second read has audio")
+  end)
+  _G.reaper = prev
+  if not ok then error(err, 0) end
+end
+
+T["item_reader outside a coroutine reads directly"] = function()
+  local prev = _G.reaper
+  _G.reaper = coroutine_hostile_reaper()
+  local ok, err = pcall(function()
+    local read = audio.item_reader("take", 48000, 1)
+    H.eq(read(0, 2)[2], 0.25)
+  end)
+  _G.reaper = prev
+  if not ok then error(err, 0) end
+end
+
+T["audio.resume reports errors raised inside the job"] = function()
+  local co = coroutine.create(function() error("boom", 0) end)
+  local ok, msg = audio.resume(co)
+  H.eq(ok, false)
+  H.eq(msg, "boom")
+end
+
 return T

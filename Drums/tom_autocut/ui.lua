@@ -7,6 +7,7 @@ local pipeline = require("tom_autocut.pipeline")
 local preview = require("tom_autocut.preview")
 local apply = require("tom_autocut.apply")
 local features = require("tom_autocut.features")
+local audio = require("tom_autocut.audio")
 
 local M = {}
 local TITLE = "GD Tom auto-cut"
@@ -123,7 +124,7 @@ function M.run(ImGui)
   local function step_job()
     local deadline = now() + 0.025
     while S.job and now() < deadline do
-      local ok, a, b = coroutine.resume(S.job)
+      local ok, a, b = audio.resume(S.job)
       if not ok then
         project.close_sources(S.job_tracks)
         if S.job_kind == "full" then S.state = nil else S.band_cancelled = true end
