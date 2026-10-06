@@ -5,12 +5,16 @@ local log, max = math.log, math.max
 
 local function db10(x) return 10 * log(max(x, 1e-30), 10) end
 
+local function usable(tr) return tr.model.usable ~= false end
+
 local function dominance(c, tr, t_min, opts)
   local w = opts.weights
-  local e = db10(c.band_e / max(tr.model.typical_e, 1e-30))
+  local e = usable(tr) and db10(c.band_e / max(tr.model.typical_e, 1e-30)) or 0
+  local sum = w.energy + w.arrival + w.sharp
+  if sum <= 0 then return e end
   local a = -12 * (c.ptime - t_min) / opts.window_s
   local s = db10(c.sharpness / max(tr.model.typical_sharp, 1e-9))
-  return (w.energy * e + w.arrival * a + w.sharp * s) / (w.energy + w.arrival + w.sharp)
+  return (w.energy * e + w.arrival * a + w.sharp * s) / sum
 end
 
 function M.attribute(tracks, opts)
@@ -31,10 +35,13 @@ function M.attribute(tracks, opts)
     for k = i, j do
       local m = all[k]
       m.c.dominance = dominance(m.c, m.tr, t0, opts)
-      if m.tr.role == "ref" then
-        if not best_ref or m.c.dominance > best_ref.c.dominance then best_ref = m end
-      elseif not best_tom or m.c.dominance > best_tom.c.dominance then
-        best_tom = m
+      -- A track without a usable model never makes other candidates bleed.
+      if usable(m.tr) then
+        if m.tr.role == "ref" then
+          if not best_ref or m.c.dominance > best_ref.c.dominance then best_ref = m end
+        elseif not best_tom or m.c.dominance > best_tom.c.dominance then
+          best_tom = m
+        end
       end
     end
     for k = i, j do
@@ -44,9 +51,9 @@ function M.attribute(tracks, opts)
         c.status = "ref"
       elseif best_ref and best_ref.c.dominance > c.dominance + opts.margin_db then
         c.status, c.bleed_from = "bleed", best_ref.tr.name
-      elseif best_tom ~= m and best_tom.c.dominance > c.dominance + opts.margin_db then
+      elseif best_tom and best_tom ~= m and best_tom.c.dominance > c.dominance + opts.margin_db then
         c.status, c.bleed_from = "bleed", best_tom.tr.name
-      elseif c.score < opts.threshold then
+      elseif c.score <= 0 or c.score < opts.threshold then
         c.status = "rejected"
       else
         c.status = "hit"

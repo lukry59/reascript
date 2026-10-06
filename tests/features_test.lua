@@ -77,6 +77,23 @@ T["learn_track: manual band wins"] = function()
   H.eq(m.band_lo, 70); H.eq(m.band_hi, 180); H.truthy(m.manual)
 end
 
+T["learn_track: usable when strong hits exist"] = function()
+  local cs = { cand(tom_buf(SR, 90), SR, -3), cand(tom_buf(SR, 90), SR, -4) }
+  H.eq(features.learn_track(cs).usable, true)
+end
+
+T["learn_track: empty strong pool is unusable, medians over all candidates"] = function()
+  local cs = { cand(noise_buf(SR), SR, -3, 4), cand(noise_buf(SR), SR, -5, 6), cand(noise_buf(SR), SR, -7, 8) }
+  local m = features.learn_track(cs)
+  H.eq(m.n_strong, 0)
+  H.eq(m.usable, false)
+  H.eq(m.typical_peak_db, -5, "peak")
+  H.eq(m.typical_sharp, 6, "sharp")
+  local e = features.band_energy(cs[1].feat, m.band_lo, m.band_hi)
+  H.near(m.typical_e, e, e * 1e-9, "energy")
+  H.near(m.typical_ratio_db, ratio_db(cs[1].feat), 1e-9, "ratio")
+end
+
 T["score: real hit high, snare-like bleed low, below floor zero"] = function()
   local cs = {}
   for i = 1, 5 do cs[#cs + 1] = cand(tom_buf(SR, 90), SR, -3) end

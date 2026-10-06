@@ -102,6 +102,29 @@ T["silent track: no candidates, default band, no region"] = function()
   H.eq(#tr.items[1].regions, 0)
 end
 
+T["cymbal-like reference aligned with tom hits keeps the tom hits"] = function()
+  local dur = 3.0
+  local tm, cy = S.silence(SR, dur), S.silence(SR, dur)
+  S.add_noise(tm, 2e-4, 3); S.add_noise(cy, 2e-4, 4)
+  for k, t in ipairs({ 0.5, 1.3, 2.1 }) do
+    S.add_tom(tm, SR, t, { f0 = 110, amp = 0.7, decay = 0.5 })
+    S.add_noise_burst(cy, SR, t + 0.001, { amp = 0.6, seed = k })
+  end
+  local tracks = {
+    { key = "cy", name = "Cymbal", role = "ref", items = { item(cy) } },
+    { key = "tom", name = "Tom 1", role = "tom", items = { item(tm) } },
+  }
+  local state = analysis.run(tracks, settings.DEFAULTS)
+  pipeline.recompute(state, settings.DEFAULTS)
+  H.eq(state.tracks[1].model.usable, false, "ref usable")
+  local hits = 0
+  for _, c in ipairs(state.tracks[2].cands) do
+    H.truthy(c.status ~= "bleed", "tom candidate at " .. c.time .. " marked bleed")
+    if c.status == "hit" then hits = hits + 1 end
+  end
+  H.eq(hits, 3, "tom hits")
+end
+
 T["yield reports monotonic progress up to 1"] = function()
   local last = 0
   analysis.run(scenario(), settings.DEFAULTS, function(f)

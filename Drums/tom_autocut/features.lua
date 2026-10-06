@@ -65,7 +65,7 @@ function M.learn_track(cands, opts)
   for _, c in ipairs(pool) do
     if c.peak_db >= pool[1].peak_db - 6 and #strong < cap then strong[#strong + 1] = c end
   end
-  local m = { ok = #strong >= 2, n_strong = #strong }
+  local m = { ok = #strong >= 2, n_strong = #strong, usable = #strong > 0 }
   local f0s = {}
   for i, c in ipairs(strong) do f0s[i] = c.feat.f0 end
   if opts.band then
@@ -79,8 +79,10 @@ function M.learn_track(cands, opts)
     m.band_lo, m.band_hi = M.DEFAULT_BAND[1], M.DEFAULT_BAND[2]
     m.f0 = m.band_lo / 0.75
   end
+  -- No strong low-dominant hit (e.g. cymbal-only reference): typicals from all candidates.
+  local basis = m.usable and strong or cands
   local es, peaks, ratios, sharps = {}, {}, {}, {}
-  for i, c in ipairs(strong) do
+  for i, c in ipairs(basis) do
     es[i] = M.band_energy(c.feat, m.band_lo, m.band_hi)
     peaks[i] = c.peak_db
     ratios[i] = db10(c.feat.e_low / max(c.feat.e_high, 1e-30))

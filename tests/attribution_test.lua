@@ -50,4 +50,44 @@ T["clusters do not chain beyond the window"] = function()
   H.eq(c.status, "hit")
 end
 
+T["unusable reference never marks a tom as bleed"] = function()
+  local s, t = cand(2.0, 1), cand(2.001, 0.05)
+  local ref = track("Cymbal", "ref", { s })
+  ref.model = { typical_e = 1e-12, typical_sharp = 10, usable = false }
+  attribution.attribute({ ref, track("Tom 1", "tom", { t }) }, OPTS)
+  H.eq(s.status, "ref")
+  H.eq(t.status, "hit")
+end
+
+T["unusable tom track is never the bleed source"] = function()
+  local a, b = cand(1.0, 1), cand(1.002, 10 ^ -1.2, 5, 0.8)
+  local fl = track("Floor", "tom", { a })
+  fl.model = { typical_e = 1e-12, typical_sharp = 10, usable = false }
+  attribution.attribute({ fl, track("Tom 1", "tom", { b }) }, OPTS)
+  H.eq(b.status, "hit")
+  H.eq(a.status, "hit")
+end
+
+T["zero score is rejected even with threshold 0"] = function()
+  local o = {}
+  for k, v in pairs(OPTS) do o[k] = v end
+  o.threshold = 0
+  local z, p = cand(1.0, 1, 10, 0), cand(2.0, 1, 10, 0.01)
+  attribution.attribute({ track("Tom 1", "tom", { z, p }) }, o)
+  H.eq(z.status, "rejected")
+  H.eq(p.status, "hit")
+end
+
+T["all weights zero: energy-only dominance, no NaN"] = function()
+  local o = {}
+  for k, v in pairs(OPTS) do o[k] = v end
+  o.weights = { energy = 0, arrival = 0, sharp = 0 }
+  local a, b = cand(1.0, 1), cand(1.002, 10 ^ -1.2, 5, 0.8)
+  attribution.attribute({ track("Floor", "tom", { a }), track("Tom 1", "tom", { b }) }, o)
+  H.truthy(b.dominance == b.dominance, "NaN dominance")
+  H.near(b.dominance, -12, 1e-9)
+  H.eq(a.status, "hit")
+  H.eq(b.status, "bleed")
+end
+
 return T
