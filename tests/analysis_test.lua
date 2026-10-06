@@ -134,6 +134,76 @@ T["pass_a reports progress often during the feature loop"] = function()
   H.truthy(ones >= 2 + math.floor(#out / 8), ("progress(1) calls %d for %d candidates"):format(ones, #out))
 end
 
+T["tom track split into two items: regions per item, hits in both"] = function()
+  local full = S.silence(SR, 5.0)
+  S.add_noise(full, 2e-4, 5)
+  for _, t in ipairs({ 0.5, 1.5, 3.0, 4.0 }) do S.add_tom(full, SR, t, { f0 = 120, amp = 0.7, decay = 0.5 }) end
+  local half = math.floor(2.5 * SR)
+  local a, b = {}, {}
+  for i = 1, half do a[i] = full[i] end
+  for i = half + 1, #full do b[i - half] = full[i] end
+  local ia, ib = item(a, 0), item(b, 2.5)
+  ia.key, ib.key = "a", "b"
+  local state = analysis.run({ { key = "tom", name = "Tom 1", role = "tom", items = { ia, ib } } }, settings.DEFAULTS)
+  pipeline.recompute(state, settings.DEFAULTS)
+  for _, it in ipairs({ ia, ib }) do
+    H.eq(#it.hits, 2, "hits in item " .. it.key)
+    H.eq(#it.regions, 2, "regions in item " .. it.key)
+    H.near(it.regions[1].s, 0.495, 0.002, "first region " .. it.key)
+    H.near(it.regions[2].s, 1.495, 0.002, "second region " .. it.key)
+    for _, r in ipairs(it.regions) do H.truthy(r.e <= it.len + 1e-9, "region inside item " .. it.key) end
+  end
+  H.near(ib.cands[1].ptime, 3.0, 0.002, "second item project time")
+  H.eq(state.tracks[1].stats.regions, 4)
+end
+
+T["kick reference: its bleed on the tom is attributed, tom hits kept"] = function()
+  local dur = 4.0
+  local tm, kk = S.silence(SR, dur), S.silence(SR, dur)
+  S.add_noise(tm, 2e-4, 6); S.add_noise(kk, 2e-4, 7)
+  for _, t in ipairs({ 0.8, 2.2 }) do
+    S.add_tom(kk, SR, t, { f0 = 60, amp = 0.9, decay = 0.4 })
+    S.add_tom(tm, SR, t + 0.002, { f0 = 60, amp = 0.1, decay = 0.4 })
+  end
+  for _, t in ipairs({ 0.4, 1.5, 3.0 }) do S.add_tom(tm, SR, t, { f0 = 130, amp = 0.7, decay = 0.5 }) end
+  local tracks = {
+    { key = "kick", name = "Kick", role = "ref", items = { item(kk) } },
+    { key = "tom", name = "Tom 1", role = "tom", items = { item(tm) } },
+  }
+  local state = analysis.run(tracks, settings.DEFAULTS)
+  pipeline.recompute(state, settings.DEFAULTS)
+  local ref = state.tracks[1]
+  H.truthy(#ref.cands >= 2, "kick events")
+  for _, c in ipairs(ref.cands) do H.eq(c.status, "ref") end
+  H.eq(ref.items[1].band, nil, "no band pass on a reference")
+  local hits, bleeds = {}, 0
+  for _, c in ipairs(state.tracks[2].cands) do
+    if c.status == "hit" then hits[#hits + 1] = c.time end
+    if c.status == "bleed" then
+      bleeds = bleeds + 1
+      H.eq(c.bleed_from, "Kick")
+    end
+  end
+  H.eq(bleeds, 2, "kick bleeds")
+  H.eq(#hits, 3, "tom hits")
+  H.near(hits[1], 0.4, 0.002); H.near(hits[2], 1.5, 0.002); H.near(hits[3], 3.0, 0.002)
+  H.eq(#state.tracks[2].items[1].regions, 3)
+end
+
+T["rerun_band after a band override clears needs_band_pass"] = function()
+  local state = analysis.run(scenario(), settings.DEFAULTS)
+  pipeline.recompute(state, settings.DEFAULTS)
+  local tr = state.tracks[1]
+  H.eq(tr.needs_band_pass, false, "fresh analysis")
+  tr.band_override = { 100, 250 }
+  pipeline.recompute(state, settings.DEFAULTS)
+  H.eq(tr.needs_band_pass, true, "after override")
+  analysis.rerun_band(tr)
+  pipeline.recompute(state, settings.DEFAULTS)
+  H.eq(tr.needs_band_pass, false, "after re-pass")
+  H.eq(tr.items[1].band.lo, 100); H.eq(tr.items[1].band.hi, 250)
+end
+
 T["yield reports monotonic progress up to 1"] = function()
   local last = 0
   analysis.run(scenario(), settings.DEFAULTS, function(f)
