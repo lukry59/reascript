@@ -125,6 +125,15 @@ T["cymbal-like reference aligned with tom hits keeps the tom hits"] = function()
   H.eq(hits, 3, "tom hits")
 end
 
+T["pass_a reports progress often during the feature loop"] = function()
+  local it = scenario()[2].items[1]
+  local ones = 0
+  local out = analysis.pass_a(it, settings.DEFAULTS, function(f) if f == 1 then ones = ones + 1 end end)
+  H.truthy(#out >= 8, "candidates " .. #out)
+  -- end of streaming + after pick_candidates + every 8 candidates
+  H.truthy(ones >= 2 + math.floor(#out / 8), ("progress(1) calls %d for %d candidates"):format(ones, #out))
+end
+
 T["yield reports monotonic progress up to 1"] = function()
   local last = 0
   analysis.run(scenario(), settings.DEFAULTS, function(f)

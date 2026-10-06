@@ -87,4 +87,14 @@ T["build: fades never cover the attack"] = function()
   H.truthy(r[1].fade_in <= 0.002 + 1e-12)
 end
 
+T["build: no preroll means no fade-in over the attack"] = function()
+  local o = {}
+  for k, v in pairs(BUILD) do o[k] = v end
+  o.preroll_s = 0
+  local r = regions.build({ 1.0 }, { 1.3 }, 5, o)
+  H.eq(r[1].fade_in, 0)
+  o.preroll_s = 0.001
+  H.near(regions.build({ 1.0 }, { 1.3 }, 5, o)[1].fade_in, 0.001, 1e-12)
+end
+
 return T

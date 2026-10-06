@@ -26,6 +26,7 @@ function M.pass_a(it, settings, progress)
   stream(it, framer, progress)
   local fast, slow = envelope.envelopes(framer:finish(), framer.frame_rate)
   local cands = envelope.pick_candidates(envelope.onset_function(fast, slow), fast, framer.frame_rate)
+  progress(1)
   local top = -math.huge
   for _, c in ipairs(cands) do top = max(top, c.peak_db) end
   local n_fft = features.fft_size(it.sr, settings.fft_base)
@@ -38,7 +39,7 @@ function M.pass_a(it, settings, progress)
       c.ptime = it.pos + c.time
       out[#out + 1] = c
     end
-    if k % 64 == 0 then progress(1) end
+    if k % 8 == 0 then progress(1) end
   end
   return out
 end

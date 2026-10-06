@@ -127,7 +127,7 @@ function M.build(onsets, ends, item_len, o)
       local len, tail = r.e - r.s, max(0, r.e - r.last)
       local fo = o.fade_out_s
       if o.auto then fo = min(max(0.3 * tail, o.fade_out_s), 0.5) end
-      r.fade_in = min(o.fade_in_s, len / 2)
+      r.fade_in = min(o.fade_in_s, len / 2, max(0, r.first - r.s))
       r.fade_out = min(fo, tail, len / 2)
       out[#out + 1] = r
     end
