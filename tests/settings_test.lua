@@ -27,10 +27,10 @@ T["presets merge over defaults"] = function()
 end
 
 T["tom names"] = function()
-  for _, n in ipairs({ "Tom 1", "TOM2", "Floor Tom", "FT", "ft 16", "Rack", "rack tom" }) do
+  for _, n in ipairs({ "Tom 1", "TOM2", "Floor Tom", "FT", "ft 16", "Rack", "rack tom", "Toms" }) do
     H.truthy(settings.is_tom_name(n), n)
   end
-  for _, n in ipairs({ "Snare", "Left OH", "Soft synth", "Kick In", "" }) do
+  for _, n in ipairs({ "Snare", "Left OH", "Soft synth", "Kick In", "", "Snare Bottom", "Bottom Mic", "Custom", "Atom" }) do
     H.truthy(not settings.is_tom_name(n), n)
   end
 end

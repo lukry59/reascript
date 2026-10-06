@@ -59,7 +59,7 @@ end
 
 function M.is_tom_name(name)
   local n = (name or ""):lower()
-  return n:find("tom", 1, true) ~= nil
+  return n:find("%f[%a]tom") ~= nil
       or n:find("floor", 1, true) ~= nil
       or n:find("%f[%w]rack%f[%W]") ~= nil
       or n:find("%f[%w]ft%f[%W]") ~= nil
