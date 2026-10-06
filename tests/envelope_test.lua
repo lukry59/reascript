@@ -72,4 +72,21 @@ T["silence yields no candidate"] = function()
   H.eq(#detect(S.silence(SR, 1.0)), 0)
 end
 
+T["item starting mid-ring yields no t=0 candidate"] = function()
+  local buf = S.silence(SR, 1.0)
+  for i = 1, #buf do
+    local t = (i - 1) / SR
+    buf[i] = 0.5 * math.exp(-t * 6.9 / 0.6) * math.sin(2 * math.pi * 90 * t + 1)
+  end
+  H.eq(#detect(buf), 0)
+end
+
+T["attack at the very start of an item is still detected"] = function()
+  local buf = S.silence(SR, 1.0)
+  S.add_tom(buf, SR, 0.002, { f0 = 90, amp = 0.8, decay = 0.6 })
+  local c = detect(buf)
+  H.eq(#c, 1, "candidate count")
+  H.truthy(c[1].time < 0.005, "time " .. c[1].time)
+end
+
 return T

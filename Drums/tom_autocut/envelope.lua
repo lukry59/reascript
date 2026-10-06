@@ -46,7 +46,7 @@ function M.envelopes(peaks, frame_rate, opts)
   local hold = max(1, floor((opts.hold_s or 0.010) * frame_rate + 0.5))
   local a = 1 - exp(-1 / ((opts.slow_s or 0.020) * frame_rate))
   local fast, slow = {}, {}
-  local dq, head, tail, s = {}, 1, 0, 0
+  local dq, head, tail, s = {}, 1, 0, nil
   for i = 1, #peaks do
     local v = peaks[i]
     while tail >= head and peaks[dq[tail]] <= v do tail = tail - 1 end
@@ -55,7 +55,7 @@ function M.envelopes(peaks, frame_rate, opts)
     if dq[head] <= i - hold then head = head + 1 end
     local f = peaks[dq[head]]
     fast[i] = f
-    s = s + a * (f - s)
+    s = s and (s + a * (f - s)) or f
     slow[i] = s
   end
   return fast, slow
@@ -63,7 +63,7 @@ end
 
 -- Rise of the fast envelope above the previous slow value, in dB (>= 0).
 function M.onset_function(fast, slow)
-  local odf, prev = {}, 0
+  local odf, prev = {}, fast[1] or 0
   for i = 1, #fast do
     local d = M.to_db(fast[i]) - M.to_db(prev)
     odf[i] = d > 0 and d or 0
